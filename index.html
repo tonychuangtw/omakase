@@ -23,11 +23,14 @@
     border-radius: 14px; padding: 18px; margin: 14px 0;
   }
   label { display: block; font-size: 0.9rem; color: var(--text2); margin: 12px 0 4px; }
-  input {
+  input, select {
     width: 100%; padding: 12px; border-radius: 10px; border: 1px solid var(--border);
     background: var(--bg); color: var(--text); font-size: 1rem;
   }
-  input:focus { outline: none; border-color: var(--accent); }
+  input:focus, select:focus { outline: none; border-color: var(--accent); }
+  input[type="date"] { color-scheme: dark; }
+  .row2 { display: flex; gap: 10px; }
+  .row2 > div { flex: 1; }
   button {
     border: none; border-radius: 10px; padding: 12px 20px; font-size: 1rem;
     cursor: pointer; font-weight: 600;
@@ -38,6 +41,20 @@
     background: transparent; color: var(--bad); border: 1px solid var(--border);
     padding: 6px 12px; font-size: 0.85rem;
   }
+  .pause {
+    background: transparent; color: var(--text2); border: 1px solid var(--border);
+    padding: 6px 12px; font-size: 0.85rem;
+  }
+  .btn-row { display: flex; gap: 6px; flex-shrink: 0; }
+  .ghost {
+    background: transparent; color: var(--accent); border: 1px solid var(--accent);
+    padding: 8px 14px; font-size: 0.88rem;
+  }
+  .avail { color: var(--ok); font-size: 0.9rem; margin-top: 4px; }
+  details.hist { margin-top: 6px; }
+  details.hist summary { cursor: pointer; color: var(--text2); font-size: 0.85rem; }
+  .hist-row { font-size: 0.82rem; color: var(--text2); padding: 2px 0 2px 12px; }
+  .badge.paused { color: var(--text2); border-color: var(--border); }
   .entry { border-bottom: 1px solid var(--border); padding: 12px 0; }
   .entry:last-child { border-bottom: none; }
   .entry-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
@@ -76,7 +93,25 @@
     <label for="f-name">餐廳名</label>
     <input id="f-name" placeholder="例：酉囃子" maxlength="100">
     <label for="f-date">日期（可留空 = 任何日期）</label>
-    <input id="f-date" placeholder="例：2026-08-15 或 8月中平日晚上" maxlength="100">
+    <input id="f-date" type="date">
+    <div class="row2">
+      <div>
+        <label for="f-meal">時段</label>
+        <select id="f-meal">
+          <option value="any">午晚皆可</option>
+          <option value="lunch">午餐</option>
+          <option value="dinner" selected>晚餐</option>
+        </select>
+      </div>
+      <div>
+        <label for="f-days">平日/週末</label>
+        <select id="f-days">
+          <option value="any">皆可</option>
+          <option value="weekday">平日</option>
+          <option value="weekend">週末</option>
+        </select>
+      </div>
+    </div>
     <label for="f-party">人數</label>
     <input id="f-party" type="number" min="1" max="20" value="2">
     <button id="f-submit" class="primary">送出</button>
@@ -84,7 +119,11 @@
   </div>
 
   <div class="card">
-    <h2 style="font-size:1.1rem;margin:0 0 8px;">📋 目前監控中</h2>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin:0 0 8px;">
+      <h2 style="font-size:1.1rem;margin:0;">📋 目前監控中</h2>
+      <button id="test-push" class="ghost">🔔 測試推播</button>
+    </div>
+    <p id="push-msg" class="msg" style="margin:0 0 4px;"></p>
     <div id="list"></div>
   </div>
 </div>
@@ -99,6 +138,8 @@
   var STATUS_LABEL = {
     pending: "等待首查", watching: "監看中", available: "🎉 有位子！", not_found: "找不到店"
   };
+  var MEAL_LABEL = { any: "午晚皆可", lunch: "午餐", dinner: "晚餐" };
+  var DAYS_LABEL = { any: "平假日皆可", weekday: "平日", weekend: "週末" };
 
   function $(id) { return document.getElementById(id); }
   function esc(s) {
@@ -142,16 +183,41 @@
     restaurants.forEach(function (r) {
       var div = document.createElement("div");
       div.className = "entry";
-      var st = STATUS_LABEL[r.status] || r.status || "—";
+      var paused = r.active === false;
+      var st = paused ? "⏸ 暫停中" : (STATUS_LABEL[r.status] || r.status || "—");
+      var badgeCls = paused ? "paused" : esc(r.status || "");
+      var prefs = esc(r.date || "任何日期") +
+        (r.meal && r.meal !== "any" ? " · " + MEAL_LABEL[r.meal] : "") +
+        (r.days && r.days !== "any" ? " · " + DAYS_LABEL[r.days] : "");
+      var availHtml = "";
+      if (r.status === "available" && r.availability && r.availability.length) {
+        availHtml = '<div class="avail">可訂：' + r.availability.map(esc).join("、") + "</div>";
+      }
+      var histHtml = "";
+      if (r.history && r.history.length) {
+        histHtml = '<details class="hist"><summary>查核紀錄（' + r.history.length + '）</summary>' +
+          r.history.slice().reverse().map(function (h) {
+            return '<div class="hist-row">' + fmtDate(h.t) + " — " + esc(STATUS_LABEL[h.status] || h.status || "") +
+              (h.note ? "：" + esc(h.note) : "") + "</div>";
+          }).join("") + "</details>";
+      }
       div.innerHTML =
         '<div class="entry-head"><div>' +
-        '<div class="entry-name">' + esc(r.name) + ' <span class="badge ' + esc(r.status || "") + '">' + esc(st) + "</span></div>" +
-        '<div class="entry-meta">日期：' + esc(r.date || "任何日期") + " · " + r.party + " 人 · 加入 " + fmtDate(r.added) +
+        '<div class="entry-name">' + esc(r.name) + ' <span class="badge ' + badgeCls + '">' + esc(st) + "</span></div>" +
+        '<div class="entry-meta">' + prefs + " · " + r.party + " 人 · 加入 " + fmtDate(r.added) +
         " · 上次查核 " + fmtDate(r.lastChecked) +
         (r.url ? ' · <a href="' + esc(r.url) + '" target="_blank" rel="noopener">訂位頁</a>' : "") +
         (r.note ? "<br>" + esc(r.note) : "") +
-        "</div></div>" +
-        '<button class="del" data-id="' + esc(r.id) + '">刪除</button></div>';
+        "</div>" + availHtml + histHtml + "</div>" +
+        '<div class="btn-row">' +
+        '<button class="pause">' + (paused ? "▶ 恢復" : "⏸ 暫停") + "</button>" +
+        '<button class="del">刪除</button></div></div>';
+      div.querySelector(".pause").addEventListener("click", function () {
+        api("PATCH", "/api/omakase/watch/" + encodeURIComponent(r.id), { active: paused }, function (err, data) {
+          if (err) { alert("更新失敗：" + err); return; }
+          renderList(data.restaurants);
+        });
+      });
       div.querySelector(".del").addEventListener("click", function () {
         if (!confirm("停止監控「" + r.name + "」？")) return;
         api("DELETE", "/api/omakase/watch/" + encodeURIComponent(r.id), null, function (err, data) {
@@ -179,7 +245,10 @@
     var btn = $("f-submit");
     btn.disabled = true;
     msg.textContent = "送出中…"; msg.className = "msg";
-    api("POST", "/api/omakase/watch", { name: name, date: $("f-date").value, party: party }, function (err, data) {
+    api("POST", "/api/omakase/watch", {
+      name: name, date: $("f-date").value, party: party,
+      meal: $("f-meal").value, days: $("f-days").value
+    }, function (err, data) {
       btn.disabled = false;
       if (err) { msg.textContent = "失敗：" + err; msg.className = "msg err"; return; }
       msg.textContent = "✅ 已加入「" + name + "」— claudebot500 下一輪就會開始查";
@@ -215,6 +284,14 @@
     initGsi();
     if (token()) showApp();
     $("f-submit").addEventListener("click", submitForm);
+    $("test-push").addEventListener("click", function () {
+      var m = $("push-msg");
+      m.textContent = "發送中…"; m.className = "msg";
+      api("POST", "/api/omakase/test-push", {}, function (err) {
+        if (err) { m.textContent = "推播失敗：" + err; m.className = "msg err"; return; }
+        m.textContent = "✅ 已發送，看看 claudebot500 的 Telegram";
+      });
+    });
   });
 })();
 </script>
