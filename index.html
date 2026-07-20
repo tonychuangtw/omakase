@@ -92,8 +92,11 @@
     <h2 style="font-size:1.1rem;margin:0 0 4px;">➕ 新增監控</h2>
     <label for="f-name">餐廳名</label>
     <input id="f-name" placeholder="例：酉囃子" maxlength="100">
-    <label for="f-date">日期（可留空 = 任何日期）</label>
-    <input id="f-date" type="date">
+    <label>日期區間（可留空 = 任何日期）</label>
+    <div class="row2">
+      <div><input id="f-date-from" type="date" aria-label="起始日期"></div>
+      <div><input id="f-date-to" type="date" aria-label="結束日期"></div>
+    </div>
     <div class="row2">
       <div>
         <label for="f-meal">時段</label>
@@ -186,7 +189,9 @@
       var paused = r.active === false;
       var st = paused ? "⏸ 暫停中" : (STATUS_LABEL[r.status] || r.status || "—");
       var badgeCls = paused ? "paused" : esc(r.status || "");
-      var prefs = esc(r.date || "任何日期") +
+      var dateTxt = r.dateFrom && r.dateTo ? r.dateFrom + " ～ " + r.dateTo :
+        (r.dateFrom ? r.dateFrom + " 起" : (r.dateTo ? r.dateTo + " 前" : (r.date || "任何日期")));
+      var prefs = esc(dateTxt) +
         (r.meal && r.meal !== "any" ? " · " + MEAL_LABEL[r.meal] : "") +
         (r.days && r.days !== "any" ? " · " + DAYS_LABEL[r.days] : "");
       var availHtml = "";
@@ -245,15 +250,17 @@
     var btn = $("f-submit");
     btn.disabled = true;
     msg.textContent = "送出中…"; msg.className = "msg";
+    var dFrom = $("f-date-from").value, dTo = $("f-date-to").value;
+    if (dFrom && dTo && dFrom > dTo) { msg.textContent = "起始日期不能晚於結束日期"; msg.className = "msg err"; return; }
     api("POST", "/api/omakase/watch", {
-      name: name, date: $("f-date").value, party: party,
+      name: name, dateFrom: dFrom || null, dateTo: dTo || null, party: party,
       meal: $("f-meal").value, days: $("f-days").value
     }, function (err, data) {
       btn.disabled = false;
       if (err) { msg.textContent = "失敗：" + err; msg.className = "msg err"; return; }
       msg.textContent = "✅ 已加入「" + name + "」— claudebot500 下一輪就會開始查";
       msg.className = "msg";
-      $("f-name").value = ""; $("f-date").value = "";
+      $("f-name").value = ""; $("f-date-from").value = ""; $("f-date-to").value = "";
       renderList(data.restaurants);
     });
   }
