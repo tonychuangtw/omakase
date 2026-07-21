@@ -28,7 +28,9 @@
     background: var(--bg); color: var(--text); font-size: 1rem;
   }
   input:focus, select:focus { outline: none; border-color: var(--accent); }
-  input[type="date"] { color-scheme: dark; }
+  input[type="date"] {
+    color-scheme: dark; min-height: 48px; -webkit-appearance: none; appearance: none;
+  }
   .row2 { display: flex; gap: 10px; }
   .row2 > div { flex: 1; }
   button {
@@ -92,10 +94,15 @@
     <h2 style="font-size:1.1rem;margin:0 0 4px;">➕ 新增監控</h2>
     <label for="f-name">餐廳名</label>
     <input id="f-name" placeholder="例：酉囃子" maxlength="100">
-    <label>日期區間（可留空 = 任何日期）</label>
     <div class="row2">
-      <div><input id="f-date-from" type="date" aria-label="起始日期"></div>
-      <div><input id="f-date-to" type="date" aria-label="結束日期"></div>
+      <div>
+        <label for="f-date-from">起始日（留空=不限）</label>
+        <input id="f-date-from" type="date">
+      </div>
+      <div>
+        <label for="f-date-to">截止日（留空=不限）</label>
+        <input id="f-date-to" type="date">
+      </div>
     </div>
     <div class="row2">
       <div>
@@ -115,8 +122,24 @@
         </select>
       </div>
     </div>
-    <label for="f-party">人數</label>
-    <input id="f-party" type="number" min="1" max="20" value="2">
+    <div class="row2">
+      <div>
+        <label for="f-party">人數</label>
+        <input id="f-party" type="number" min="1" max="20" value="2">
+      </div>
+      <div>
+        <label for="f-scan">掃描頻率</label>
+        <select id="f-scan">
+          <option value="10" selected>每 10 分鐘</option>
+          <option value="30">每 30 分鐘</option>
+          <option value="60">每小時</option>
+          <option value="360">每 6 小時</option>
+          <option value="1440">每天一次</option>
+          <option value="open">只掃開放時間 🎯</option>
+        </select>
+      </div>
+    </div>
+    <p class="msg" style="margin:4px 0 0;">🎯 只掃開放時間 = 平時每天確認「次回開放」時刻，開放前後才密集搶掃</p>
     <button id="f-submit" class="primary">送出</button>
     <p id="f-msg" class="msg"></p>
   </div>
@@ -143,6 +166,10 @@
   };
   var MEAL_LABEL = { any: "午晚皆可", lunch: "午餐", dinner: "晚餐" };
   var DAYS_LABEL = { any: "平假日皆可", weekday: "平日", weekend: "週末" };
+  var SCAN_LABEL = {
+    "10": "每10分掃", "30": "每30分掃", "60": "每小時掃",
+    "360": "每6小時掃", "1440": "每天掃", "open": "🎯 只掃開放時間"
+  };
 
   function $(id) { return document.getElementById(id); }
   function esc(s) {
@@ -193,7 +220,8 @@
         (r.dateFrom ? r.dateFrom + " 起" : (r.dateTo ? r.dateTo + " 前" : (r.date || "任何日期")));
       var prefs = esc(dateTxt) +
         (r.meal && r.meal !== "any" ? " · " + MEAL_LABEL[r.meal] : "") +
-        (r.days && r.days !== "any" ? " · " + DAYS_LABEL[r.days] : "");
+        (r.days && r.days !== "any" ? " · " + DAYS_LABEL[r.days] : "") +
+        (r.scan && r.scan !== "10" ? " · " + (SCAN_LABEL[r.scan] || r.scan) : "");
       var availHtml = "";
       if (r.status === "available" && r.availability && r.availability.length) {
         availHtml = '<div class="avail">可訂：' + r.availability.map(esc).join("、") + "</div>";
@@ -254,7 +282,7 @@
     if (dFrom && dTo && dFrom > dTo) { msg.textContent = "起始日期不能晚於結束日期"; msg.className = "msg err"; return; }
     api("POST", "/api/omakase/watch", {
       name: name, dateFrom: dFrom || null, dateTo: dTo || null, party: party,
-      meal: $("f-meal").value, days: $("f-days").value
+      meal: $("f-meal").value, days: $("f-days").value, scan: $("f-scan").value
     }, function (err, data) {
       btn.disabled = false;
       if (err) { msg.textContent = "失敗：" + err; msg.className = "msg err"; return; }
