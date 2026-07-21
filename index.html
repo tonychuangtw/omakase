@@ -57,6 +57,8 @@
   details.hist summary { cursor: pointer; color: var(--text2); font-size: 0.85rem; }
   .hist-row { font-size: 0.82rem; color: var(--text2); padding: 2px 0 2px 12px; }
   .badge.paused { color: var(--text2); border-color: var(--border); }
+  .scan-inline { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 0.85rem; color: var(--text2); }
+  .scan-inline select { width: auto; padding: 6px 8px; font-size: 0.85rem; min-height: 0; }
   .entry { border-bottom: 1px solid var(--border); padding: 12px 0; }
   .entry:last-child { border-bottom: none; }
   .entry-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
@@ -220,8 +222,12 @@
         (r.dateFrom ? r.dateFrom + " 起" : (r.dateTo ? r.dateTo + " 前" : (r.date || "任何日期")));
       var prefs = esc(dateTxt) +
         (r.meal && r.meal !== "any" ? " · " + MEAL_LABEL[r.meal] : "") +
-        (r.days && r.days !== "any" ? " · " + DAYS_LABEL[r.days] : "") +
-        (r.scan && r.scan !== "10" ? " · " + (SCAN_LABEL[r.scan] || r.scan) : "");
+        (r.days && r.days !== "any" ? " · " + DAYS_LABEL[r.days] : "");
+      var curScan = r.scan || "10";
+      var scanSel = '<label class="scan-inline">⏱ <select class="scan-sel">' +
+        Object.keys(SCAN_LABEL).map(function (k) {
+          return '<option value="' + k + '"' + (k === curScan ? " selected" : "") + ">" + SCAN_LABEL[k] + "</option>";
+        }).join("") + "</select></label>";
       var availHtml = "";
       if (r.status === "available" && r.availability && r.availability.length) {
         availHtml = '<div class="avail">可訂：' + r.availability.map(esc).join("、") + "</div>";
@@ -241,10 +247,17 @@
         " · 上次查核 " + fmtDate(r.lastChecked) +
         (r.url ? ' · <a href="' + esc(r.url) + '" target="_blank" rel="noopener">訂位頁</a>' : "") +
         (r.note ? "<br>" + esc(r.note) : "") +
-        "</div>" + availHtml + histHtml + "</div>" +
+        "</div>" + scanSel + availHtml + histHtml + "</div>" +
         '<div class="btn-row">' +
         '<button class="pause">' + (paused ? "▶ 恢復" : "⏸ 暫停") + "</button>" +
         '<button class="del">刪除</button></div></div>';
+      div.querySelector(".scan-sel").addEventListener("change", function () {
+        var sel = this;
+        api("PATCH", "/api/omakase/watch/" + encodeURIComponent(r.id), { scan: sel.value }, function (err, data) {
+          if (err) { alert("更新失敗：" + err); sel.value = curScan; return; }
+          renderList(data.restaurants);
+        });
+      });
       div.querySelector(".pause").addEventListener("click", function () {
         api("PATCH", "/api/omakase/watch/" + encodeURIComponent(r.id), { active: paused }, function (err, data) {
           if (err) { alert("更新失敗：" + err); return; }
